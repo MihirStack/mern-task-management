@@ -2,40 +2,31 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import { pinoHttp } from "pino-http";
+import swaggerUi from "swagger-ui-express";
 
 import env from "./config/env.js";
 import logger from "./config/logger.js";
-import { errorHandler } from "./middleware/error.middleware.js";
-import { notFoundHandler } from "./middleware/notFound.middleware.js";
-import { apiRateLimiter } from "./middleware/rateLimit.middleware.js";
+import swaggerSpec from "./config/swagger.js";
+import { errorHandler } from "./middlewares/error.middleware.js";
+import { notFoundHandler } from "./middlewares/notFound.middleware.js";
+import { apiRateLimiter } from "./middlewares/rateLimit.middleware.js";
+import authRoutes from "./routes/auth.routes.js";
 
 const app = express();
 
-// Security
 app.use(helmet());
-
 app.use(
   cors({
     origin: env.CLIENT_URL,
     credentials: true,
   }),
 );
-
-// Request parsing
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use(pinoHttp({ logger }));
 
-// Logging
-app.use(
-  pinoHttp({
-    logger,
-  }),
-);
-
-// Rate limiting
 app.use("/api", apiRateLimiter);
 
-// Health check
 app.get("/api/v1/health", (_req, res) => {
   res.status(200).json({
     success: true,
@@ -44,10 +35,28 @@ app.get("/api/v1/health", (_req, res) => {
   });
 });
 
-// Must remain after application routes
-app.use(notFoundHandler);
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    explorer: true,
+    customSiteTitle: "TaskFlow API Documentation",
+    swaggerOptions: {
+      persistAuthorization: true,
+      displayRequestDuration: true,
+      filter: true,
+      tryItOutEnabled: true,
+    },
+  }),
+);
 
-// Must remain last
+app.get("/api-docs.json", (_req, res) => {
+  res.status(200).json(swaggerSpec);
+});
+
+app.use("/api/v1/auth", authRoutes);
+
+app.use(notFoundHandler);
 app.use(errorHandler);
 
 export default app;
